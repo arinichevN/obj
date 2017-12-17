@@ -214,8 +214,8 @@ void serverRun(int *state, int init_state) {
             if (item != NULL) {
                 if (i2l.item[i].p1 >= 0) {
                     item->power = (double) i2l.item[i].p1;
-                }else{
-                    item->power=0;
+                } else {
+                    item->power = 0;
                 }
             }
         }
@@ -224,7 +224,7 @@ void serverRun(int *state, int init_state) {
 
     acp_responseSend(&response, &peer_client);
 }
-#define FX pow((1 + item->kl), (0.2 * (item->temperature - ambient_temperature))) - 1
+#define FX pow((item->kl), (0.2 * (item->temperature - ambient_temperature)))
 #define FX1 item->kl * (item->temperature - ambient_temperature)
 
 void matter_ctrl(Matter *item, double ambient_temperature, double heater_power, double cooler_power) {
@@ -232,14 +232,22 @@ void matter_ctrl(Matter *item, double ambient_temperature, double heater_power, 
     //aiming to ambient
     if (item->temperature > ambient_temperature) {
         dE = -(FX);
+#ifdef MODE_DEBUG
         printf("\tcooling ");
+#endif
     } else if (item->temperature < ambient_temperature) {
         dE = FX;
+#ifdef MODE_DEBUG
         printf("\theating ");
+#endif
     } else {
+#ifdef MODE_DEBUG
         printf("\tstable ");
+#endif
     }
+#ifdef MODE_DEBUG
     printf("adE:%f ", dE);
+#endif
     //actuator affect
     dE += heater_power;
     dE -= cooler_power;
@@ -251,7 +259,9 @@ void matter_ctrl(Matter *item, double ambient_temperature, double heater_power, 
     }
     //temperature computation
     double dT = dE / (item->ksh * item->mass);
+#ifdef MODE_DEBUG
     printf("tdE:%f dT:%f\n", dE, dT);
+#endif
     if (item->temperature_pipe.length > 0) {//delay for temperature
         pipe_move(&item->temperature_pipe);
         pipe_push(&item->temperature_pipe, dT);
