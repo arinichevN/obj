@@ -214,6 +214,8 @@ void serverRun(int *state, int init_state) {
             if (item != NULL) {
                 if (i2l.item[i].p1 >= 0) {
                     item->power = (double) i2l.item[i].p1;
+                }else{
+                    item->power=0;
                 }
             }
         }
@@ -230,12 +232,12 @@ void matter_ctrl(Matter *item, double ambient_temperature, double heater_power, 
     //aiming to ambient
     if (item->temperature > ambient_temperature) {
         dE = -(FX);
-        printf("cooling ");
+        printf("\tcooling ");
     } else if (item->temperature < ambient_temperature) {
         dE = FX;
-        printf("heating ");
+        printf("\theating ");
     } else {
-        printf("stable ");
+        printf("\tstable ");
     }
     printf("adE:%f ", dE);
     //actuator affect
