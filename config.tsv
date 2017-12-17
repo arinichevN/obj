@@ -1,0 +1,2 @@
+port	PID_path	cycle_duration_sec	cycle_duration_nsec	private_db_file
+49176	/var/run/obj.pid	0	1000000	/etc/controller/obj/data.db
