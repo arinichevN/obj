@@ -71,7 +71,7 @@ function build {
 	cd lib && \
 	build_lib $1 && \
 	cd ../ 
-	gcc -D_REENTRANT -DSQLITE_THREADSAFE=2 -DSQLITE_OMIT_LOAD_EXTENSION $1 $3 main.c -o $2 $DEBUG_PARAM -lpthread -lsqlite3 -L./lib -lpac && echo "Application successfully compiled. Launch command: sudo ./"$2
+	gcc -D_REENTRANT -DSQLITE_THREADSAFE=2 -DSQLITE_OMIT_LOAD_EXTENSION $1 $3 main.c -o $2 $DEBUG_PARAM -lpthread -lsqlite3 -lm -L./lib -lpac && echo "Application successfully compiled. Launch command: sudo ./"$2
 }
 
 function full {

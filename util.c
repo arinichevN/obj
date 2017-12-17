@@ -10,7 +10,7 @@ void pipe_push(D1List *list, double value) {
 }
 
 double pipe_pop(D1List *list) {
-    return list->item[0];
+    return list->item[list->length-1];
 }
 
 void pipe_move(D1List *list) {
@@ -91,9 +91,12 @@ int unlockProg(Prog *item) {
     return 1;
 }
 
+/*
 struct timespec getTimeRestChange(const Prog *item) {
-    return getTimeRestTmr(item->reg.change_gap, item->reg.tmr);
+    //    return getTimeRestTmr(item->reg.change_gap, item->reg.tmr);
 }
+ */
+
 char * getStateStr(char state) {
     switch (state) {
         case ON:
@@ -106,49 +109,36 @@ char * getStateStr(char state) {
             return "INIT";
         case RUN:
             return "RUN";
+        case DISABLE:
+            return "DISABLE";
     }
     return "?";
 }
+
 int bufCatProgRuntime(const Prog *item, ACPResponse *response) {
     char q[LINE_SIZE];
-    char *state = reg_getStateStr(item->reg.state);
-    char *state_r = reg_getStateStr(item->reg.state_r);
-    struct timespec tm_rest = getTimeRestChange(item);
-    snprintf(q, sizeof q, "%d" ACP_DELIMITER_COLUMN_STR "%s" ACP_DELIMITER_COLUMN_STR "%s" ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR "%ld" ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR "%d" ACP_DELIMITER_ROW_STR,
+    char *state = getStateStr(item->state);
+    snprintf(q, sizeof q, "%d" ACP_DELIMITER_COLUMN_STR "%s" ACP_DELIMITER_COLUMN_STR FSTR ACP_DELIMITER_COLUMN_STR FSTR ACP_DELIMITER_COLUMN_STR FSTR ACP_DELIMITER_ROW_STR,
             item->id,
             state,
-            state_r,
-            item->reg.heater.output,
-            item->reg.cooler.output,
-            tm_rest.tv_sec,
-            item->reg.sensor.value.value,
-            item->reg.sensor.value.state
+            item->heater.power,
+            item->cooler.power,
+            item->matter.temperature
             );
     return acp_responseStrCat(response, q);
 }
 
 int bufCatProgInit(const Prog *item, ACPResponse *response) {
     char q[LINE_SIZE];
-    char *heater_mode = reg_getStateStr(item->reg.heater.mode);
-    char *cooler_mode = reg_getStateStr(item->reg.cooler.mode);
-    snprintf(q, sizeof q, "%d" ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR "%ld" ACP_DELIMITER_COLUMN_STR "%s" ACP_DELIMITER_COLUMN_STR "%d" ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR "%s" ACP_DELIMITER_COLUMN_STR "%d" ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_COLUMN_STR FLOAT_NUM ACP_DELIMITER_ROW_STR,
+    snprintf(q, sizeof q, "%d" ACP_DELIMITER_COLUMN_STR "%d" ACP_DELIMITER_COLUMN_STR "%d" ACP_DELIMITER_COLUMN_STR FSTR ACP_DELIMITER_COLUMN_STR FSTR ACP_DELIMITER_COLUMN_STR FSTR ACP_DELIMITER_COLUMN_STR FSTR ACP_DELIMITER_COLUMN_STR "%d" ACP_DELIMITER_ROW_STR,
             item->id,
-            item->reg.goal,
-            item->reg.change_gap.tv_sec,
-            heater_mode,
-            item->reg.heater.use,
-            item->reg.heater.em.pwm_rsl,
-            item->reg.heater.delta,
-            item->reg.heater.pid.kp,
-            item->reg.heater.pid.ki,
-            item->reg.heater.pid.kd,
-            cooler_mode,
-            item->reg.cooler.use,
-            item->reg.cooler.em.pwm_rsl,
-            item->reg.cooler.delta,
-            item->reg.cooler.pid.kp,
-            item->reg.cooler.pid.ki,
-            item->reg.cooler.pid.kd
+            item->heater.id,
+            item->cooler.id,
+            item->ambient_temperature,
+            item->matter.mass,
+            item->matter.ksh,
+            item->matter.kl,
+            item->matter.temperature_pipe.length
             );
     return acp_responseStrCat(response, q);
 }
@@ -160,7 +150,10 @@ int bufCatProgFTS(const Prog *item, ACPResponse *response) {
 
 int bufCatProgEnabled(const Prog *item, ACPResponse *response) {
     char q[LINE_SIZE];
-    int enabled = regpidonfhc_getEnabled(&item->reg);
+    int enabled = 1;
+    if (item->state == OFF) {
+        enabled = 0;
+    }
     snprintf(q, sizeof q, "%d" ACP_DELIMITER_COLUMN_STR "%d" ACP_DELIMITER_ROW_STR,
             item->id,
             enabled
@@ -171,7 +164,6 @@ int bufCatProgEnabled(const Prog *item, ACPResponse *response) {
 void printData(ACPResponse *response) {
     ProgList *list = &prog_list;
     char q[LINE_SIZE];
-    size_t i;
     snprintf(q, sizeof q, "CONFIG_FILE: %s\n", CONFIG_FILE);
     SEND_STR(q)
     snprintf(q, sizeof q, "port: %d\n", sock_port);
@@ -190,35 +182,46 @@ void printData(ACPResponse *response) {
     SEND_STR(q)
     snprintf(q, sizeof q, "prog_list length: %d\n", list->length);
     SEND_STR(q)
-    SEND_STR("+-----------------------------------------------------------------------------------------------------------------------------------+\n")
-    SEND_STR("|                                                             Program                                                               |\n")
-    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+\n")
-    SEND_STR("|    id     |    goal   |  delta_h  |  delta_c  | change_gap|change_rest|   state   |  state_r  | state_onf | out_heater| out_cooler|\n")
-    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+\n")
+    SEND_STR("+-----------------------------------------------------------------------------------------------+\n")
+    SEND_STR("|                                Program initial data                                           |\n")
+    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+\n")
+    SEND_STR("|    id     |heater_id  |cooler_id  |ambient_tem|   mass    | spec heat |loss_factor|t_pipe_len |\n")
+    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+\n")
     PROG_LIST_LOOP_DF
     PROG_LIST_LOOP_ST
-            char *state = reg_getStateStr(curr->reg.state);
-    char *state_r = reg_getStateStr(curr->reg.state_r);
-    char *state_onf = reg_getStateStr(curr->reg.state_onf);
-    struct timespec tm1 = getTimeRestChange(curr);
-    snprintf(q, sizeof q, "|%11d|%11.3f|%11.3f|%11.3f|%11ld|%11ld|%11s|%11s|%11s|%11.3f|%11.3f|\n",
-            curr->id,
-            curr->reg.goal,
-            curr->reg.heater.delta,
-            curr->reg.cooler.delta,
-            curr->reg.change_gap.tv_sec,
-            tm1.tv_sec,
-            state,
-            state_r,
-            state_onf,
-            curr->reg.heater.output,
-            curr->reg.cooler.output
+    snprintf(q, sizeof q, "|%11d|%11d|%11d|%11.3f|%11.3f|%11.3f|%11.3f|%11d|\n",
+            item->id,
+            item->heater.id,
+            item->cooler.id,
+            item->ambient_temperature,
+            item->matter.mass,
+            item->matter.ksh,
+            item->matter.kl,
+            item->matter.temperature_pipe.length
             );
     SEND_STR(q)
     PROG_LIST_LOOP_SP
-    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+\n")
+    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+\n")
 
-    SEND_STR_L("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+------+\n")
+    SEND_STR("+-----------------------------------------------------------------------+\n")
+    SEND_STR("|                           Program runtime data                        |\n")
+    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+\n")
+    SEND_STR("|    id     |   state   |heater_pwr |cooler_pwr |  energy   |temperature|\n")
+    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+\n")
+    PROG_LIST_LOOP_DF
+    PROG_LIST_LOOP_ST
+            char *state = getStateStr(item->state);
+    snprintf(q, sizeof q, "|%11d|%11s|%11.3f|%11.3f|%11.3f|%11.3f|\n",
+            item->id,
+            state,
+            item->heater.power,
+            item->cooler.power,
+            item->matter.energy,
+            item->matter.temperature
+            );
+    SEND_STR(q)
+    PROG_LIST_LOOP_SP
+    SEND_STR_L("+-----------+-----------+-----------+-----------+-----------+-----------+\n")
 }
 
 void printHelp(ACPResponse *response) {

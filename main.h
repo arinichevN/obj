@@ -2,7 +2,6 @@
 #ifndef REGSMP_MAIN_H
 #define REGSMP_MAIN_H
 
-
 #include "lib/dbl.h"
 #include "lib/util.h"
 #include "lib/crc.h"
@@ -18,6 +17,7 @@
 #include "lib/acp/prog.h"
 #include "lib/acp/regonf.h"
 #include "lib/acp/regsmp.h"
+#include <math.h>
 
 #define APP_NAME regsmp
 #define APP_NAME_STR TOSTRING(APP_NAME)
@@ -30,33 +30,31 @@
 #endif
 #define CONFIG_FILE "" CONF_DIR "config.tsv"
 
-#define PROG_FIELDS "id,sensor_id,heater_em_id,cooler_em_id,em_mode,goal,heater_mode,heater_delta,heater_kp,heater_ki,heater_kd,cooler_mode,cooler_kp,cooler_ki,cooler_kd,cooler_delta,change_gap,enable,load"
+#define PROG_FIELDS "id,heater_id,cooler_id,ambient_temperature,matter_mass,matter_ksh,loss_factor,temperature_pipe_length,enable,load"
 
-#define WAIT_RESP_TIMEOUT 3
+#define PROG_LIST_LOOP_DF {Prog *item = prog_list.top;
+#define PROG_LIST_LOOP_ST while (item != NULL) {
+#define PROG_LIST_LOOP_SP item = item->next; } item = prog_list.top;}
 
-#define MODE_SIZE 3
+#define FSTR "%.3f"
 
-#define FLOAT_NUM "%.2f"
-
-#define PROG_LIST_LOOP_DF Prog *curr = prog_list.top;
-#define PROG_LIST_LOOP_ST while (curr != NULL) {
-#define PROG_LIST_LOOP_SP curr = curr->next; } curr = prog_list.top;
 typedef struct {
     int id;
     double power;
 } Actuator;
+
 typedef struct {
-    double kl;//loose factor
-    int temperature;
+    double temperature;
     double energy;
     double mass;
     double ksh;
-    F1List temperature_pipe;
+        double kl;//loose factor
+    D1List temperature_pipe;
 } Matter;
+
 struct prog_st {
     int id;
     double ambient_temperature;
-    double kl;
     Matter matter;
     Actuator heater;
     Actuator cooler;
@@ -71,7 +69,6 @@ DEC_LLIST(Prog)
 
 typedef struct {
     sqlite3 *db;
-    PeerList *peer_list;
     ProgList *prog_list;
 } ProgData;
 
@@ -82,6 +79,7 @@ enum {
     DO,
     INIT,
     RUN,
+    DISABLE,
     UNKNOWN
 } StateProg;
 

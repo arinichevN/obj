@@ -10,7 +10,7 @@ int checkProg(const Prog *item, const ProgList *list) {
         fprintf(stderr, "checkProg(): expected matter_ksh > 0 in prog with id = %d\n", item->id);
         return 0;
     }
-    if (item->kl < 0) {
+    if (item->matter.kl < 0) {
         fprintf(stderr, "checkProg(): expected loss_factor >= 0 in prog with id = %d\n", item->id);
         return 0;
     }
@@ -104,9 +104,9 @@ int loadProg_callback(void *d, int argc, char **argv, char **azColName) {
         } else if (strcmp("matter_ksh", azColName[i]) == 0) {
             item->matter.ksh = atof(argv[i]);
         } else if (strcmp("loss_factor", azColName[i]) == 0) {
-            item->kl = atof(argv[i]);
+            item->matter.kl = atof(argv[i]);
         } else if (strcmp("temperature_pipe_length", azColName[i]) == 0) {
-            if (!initD1List(&item->matter.temperature_pipe)) {
+            if (!initD1List(&item->matter.temperature_pipe, atoi(argv[i]))) {
                 free(item);
                 return EXIT_FAILURE;
             }
@@ -145,7 +145,7 @@ int loadProg_callback(void *d, int argc, char **argv, char **azColName) {
     return (EXIT_SUCCESS);
 }
 
-int addProgById(int prog_id, ProgList *list, PeerList *pl, const char *db_path) {
+int addProgById(int prog_id, ProgList *list, const char *db_path) {
     Prog *rprog = getProgById(prog_id, list);
     if (rprog != NULL) {//program is already running
 #ifdef MODE_DEBUG
@@ -157,7 +157,7 @@ int addProgById(int prog_id, ProgList *list, PeerList *pl, const char *db_path) 
     if (!db_open(db_path, &db)) {
         return 0;
     }
-    ProgData data = {db, pl, list};
+    ProgData data = {db, list};
     char q[LINE_SIZE];
     snprintf(q, sizeof q, "select " PROG_FIELDS " from prog where id=%d", prog_id);
     if (!db_exec(db, q, loadProg_callback, (void*) &data)) {
@@ -215,12 +215,12 @@ int deleteProgById(int id, ProgList *list, const char* db_path) {
     return done;
 }
 
-int loadActiveProg(ProgList *list, PeerList *pl, char *db_path) {
+int loadActiveProg(ProgList *list, char *db_path) {
     sqlite3 *db;
     if (!db_open(db_path, &db)) {
         return 0;
     }
-    ProgData data = {db, pl, list};
+    ProgData data = {db,  list};
     char *q = "select " PROG_FIELDS " from prog where load=1";
     if (!db_exec(db, q, loadProg_callback, (void*) &data)) {
 #ifdef MODE_DEBUG
@@ -233,12 +233,12 @@ int loadActiveProg(ProgList *list, PeerList *pl, char *db_path) {
     return 1;
 }
 
-int loadAllProg(ProgList *list, PeerList *pl, char *db_path) {
+int loadAllProg(ProgList *list,  char *db_path) {
     sqlite3 *db;
     if (!db_open(db_path, &db)) {
         return 0;
     }
-    ProgData data = {db, pl, list};
+    ProgData data = {db,  list};
     char *q = "select " PROG_FIELDS " from prog";
     if (!db_exec(db, q, loadProg_callback, (void*) &data)) {
 #ifdef MODE_DEBUG
@@ -251,9 +251,9 @@ int loadAllProg(ProgList *list, PeerList *pl, char *db_path) {
     return 1;
 }
 
-int reloadProgById(int id, ProgList *list, PeerList *pl, const char* db_path) {
+int reloadProgById(int id, ProgList *list, const char* db_path) {
     if (deleteProgById(id, list, db_path)) {
         return 1;
     }
-    return addProgById(id, list, pl, db_path);
+    return addProgById(id, list, db_path);
 }
