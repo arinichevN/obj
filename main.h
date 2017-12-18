@@ -1,16 +1,14 @@
 
-#ifndef REGSMP_MAIN_H
-#define REGSMP_MAIN_H
+#ifndef OBJ_MAIN_H
+#define OBJ_MAIN_H
 
 #include "lib/dbl.h"
 #include "lib/util.h"
 #include "lib/crc.h"
-#include "lib/gpio.h"
 #include "lib/app.h"
 #include "lib/configl.h"
 #include "lib/timef.h"
 #include "lib/udp.h"
-#include "lib/regpidonfhc.h"
 #include "lib/acp/main.h"
 #include "lib/acp/app.h"
 #include "lib/acp/regulator.h"
@@ -19,7 +17,7 @@
 #include "lib/acp/regsmp.h"
 #include <math.h>
 
-#define APP_NAME regsmp
+#define APP_NAME obj
 #define APP_NAME_STR TOSTRING(APP_NAME)
 
 #ifdef MODE_FULL
