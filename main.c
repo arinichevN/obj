@@ -1,12 +1,9 @@
 #include "main.h"
 
-char pid_path[LINE_SIZE];
 int app_state = APP_INIT;
 
 char db_data_path[LINE_SIZE];
 
-int pid_file = -1;
-int proc_id;
 int sock_port = -1;
 int sock_fd = -1;
 Peer peer_client = {.fd = &sock_fd, .addr_size = sizeof peer_client.addr};
@@ -33,14 +30,13 @@ int readSettings() {
     }
     skipLine(stream);
     int n;
-    n = fscanf(stream, "%d\t%255s\t%ld\t%ld\t%255s\n",
+    n = fscanf(stream, "%d\t%ld\t%ld\t%255s\n",
             &sock_port,
-            pid_path,
             &cycle_duration.tv_sec,
             &cycle_duration.tv_nsec,
             db_data_path
             );
-    if (n != 5) {
+    if (n != 4) {
         fclose(stream);
 #ifdef MODE_DEBUG
         fputs("ERROR: readSettings: bad format\n", stderr);
@@ -50,7 +46,7 @@ int readSettings() {
     fclose(stream);
 #ifdef MODE_DEBUG
 
-    printf("readSettings: \n\tsock_port: %d, \n\tpid_path: %s, \n\tcycle_duration: %ld sec %ld nsec, \n\tdb_data_path: %s\n", sock_port, pid_path, cycle_duration.tv_sec, cycle_duration.tv_nsec, db_data_path);
+    printf("readSettings: \n\tsock_port: %d, \n\tcycle_duration: %ld sec %ld nsec, \n\tdb_data_path: %s\n", sock_port, cycle_duration.tv_sec, cycle_duration.tv_nsec, db_data_path);
 #endif
     return 1;
 }
@@ -59,15 +55,10 @@ void initApp() {
     if (!readSettings()) {
         exit_nicely_e("initApp: failed to read settings\n");
     }
-    if (!initPid(&pid_file, &proc_id, pid_path)) {
-        exit_nicely_e("initApp: failed to initialize pid\n");
-    }
     if (!initMutex(&progl_mutex)) {
         exit_nicely_e("initApp: failed to initialize prog mutex\n");
     }
-
     if (!initServer(&sock_fd, sock_port)) {
-
         exit_nicely_e("initApp: failed to initialize udp server\n");
     }
 }
@@ -361,7 +352,6 @@ void freeApp() {
     freeData();
     freeSocketFd(&sock_fd);
     freeMutex(&progl_mutex);
-    freePid(&pid_file, &proc_id, pid_path);
 }
 
 void exit_nicely() {
