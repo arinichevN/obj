@@ -10,8 +10,8 @@ Peer peer_client = {.fd = &sock_fd, .addr_size = sizeof peer_client.addr};
 struct timespec cycle_duration = {0, 0};
 DEF_THREAD
 Mutex progl_mutex = {.created = 0, .attr_initialized = 0};
-I1List i1l = {NULL, 0};
-I2List i2l = {NULL, 0};
+I1List i1l;
+I2List i2l;
 ProgList prog_list = {NULL, NULL, 0};
 
 #include "util.c"
@@ -98,8 +98,8 @@ int initData() {
     }
     return 1;
 }
-#define PARSE_I1LIST acp_requestDataToI1List(&request, &i1l, prog_list.length);if (i1l.length <= 0) {return;}
-#define PARSE_I2LIST acp_requestDataToI2List(&request, &i2l, prog_list.length);if (i2l.length <= 0) {return;}
+#define PARSE_I1LIST acp_requestDataToI1List(&request, &i1l);if (i1l.length <= 0) {return;}
+#define PARSE_I2LIST acp_requestDataToI2List(&request, &i2l);if (i2l.length <= 0) {return;}
 
 void serverRun(int *state, int init_state) {
     SERVER_HEADER
