@@ -8,7 +8,6 @@ int sock_port = -1;
 int sock_fd = -1;
 Peer peer_client = {.fd = &sock_fd, .addr_size = sizeof peer_client.addr};
 struct timespec cycle_duration = {0, 0};
-DEF_THREAD
 Mutex progl_mutex = {.created = 0, .attr_initialized = 0};
 I1List i1l;
 I2List i2l;
@@ -64,18 +63,10 @@ void initApp() {
 }
 
 int initData() {
-    if (!loadActiveProg(&prog_list, db_data_path)) {
-#ifdef MODE_DEBUG
-        fputs("initData: ERROR: failed to load active programs\n", stderr);
-#endif
-        freeProg(&prog_list);
-        return 0;
-    }
     if (!initI1List(&i1l, ACP_BUFFER_MAX_SIZE)) {
 #ifdef MODE_DEBUG
         fputs("initData: ERROR: failed to allocate memory for i1l\n", stderr);
 #endif
-        freeProg(&prog_list);
         return 0;
     }
     if (!initI2List(&i2l, ACP_BUFFER_MAX_SIZE)) {
@@ -83,17 +74,15 @@ int initData() {
         fputs("initData: ERROR: failed to allocate memory for i2l\n", stderr);
 #endif
         FREE_LIST(&i1l);
-        freeProg(&prog_list);
         return 0;
     }
-    if (!THREAD_CREATE) {
+    if (!loadActiveProg(&prog_list, db_data_path)) {
 #ifdef MODE_DEBUG
-        fputs("initData: ERROR: failed to create thread\n", stderr);
+        fputs("initData: ERROR: failed to load active programs\n", stderr);
 #endif
-        FREE_LIST(&i2l);
+        freeProgList(&prog_list);
         FREE_LIST(&i1l);
-        freeProg(&prog_list);
-
+        FREE_LIST(&i2l);
         return 0;
     }
     return 1;
@@ -117,7 +106,7 @@ void serverRun(int *state, int init_state) {
     } else if (ACP_CMD_IS(ACP_CMD_PROG_START)) {
         PARSE_I1LIST
         for (int i = 0; i < i1l.length; i++) {
-            addProgById(i1l.item[i], &prog_list, db_data_path);
+            addProgById(i1l.item[i], &prog_list, NULL, db_data_path);
         }
         return;
     } else if (ACP_CMD_IS(ACP_CMD_PROG_RESET)) {
@@ -129,7 +118,7 @@ void serverRun(int *state, int init_state) {
             }
         }
         for (int i = 0; i < i1l.length; i++) {
-            addProgById(i1l.item[i], &prog_list, db_data_path);
+            addProgById(i1l.item[i], &prog_list, NULL, db_data_path);
         }
         return;
     } else if (ACP_CMD_IS(ACP_CMD_PROG_ENABLE)) {
@@ -137,10 +126,10 @@ void serverRun(int *state, int init_state) {
         for (int i = 0; i < i1l.length; i++) {
             Prog *item = getProgById(i1l.item[i], &prog_list);
             if (item != NULL) {
-                if (lockProg(item)) {
+                if (lockMutex(&item->mutex)) {
                     item->state = INIT;
-                    saveProgEnable(item->id, 1, db_data_path);
-                    unlockProg(item);
+                    config_saveProgEnable(item->id, 1, NULL, db_data_path);
+                    unlockMutex(&item->mutex);
                 }
             }
         }
@@ -150,10 +139,10 @@ void serverRun(int *state, int init_state) {
         for (int i = 0; i < i1l.length; i++) {
             Prog *item = getProgById(i1l.item[i], &prog_list);
             if (item != NULL) {
-                if (lockProg(item)) {
+                if (lockMutex(&item->mutex)) {
                     item->state = DISABLE;
-                    saveProgEnable(item->id, 0, db_data_path);
-                    unlockProg(item);
+                    config_saveProgEnable(item->id, 0, NULL, db_data_path);
+                    unlockMutex(&item->mutex);
                 }
             }
         }
@@ -202,13 +191,20 @@ void serverRun(int *state, int init_state) {
         PARSE_I2LIST
         for (int i = 0; i < i2l.length; i++) {
             Actuator *item = getActuatorById(i2l.item[i].p0, &prog_list);
-            if (item != NULL) {
-                if (i2l.item[i].p1 >= 0) {
-                    item->power = (double) i2l.item[i].p1;
-                } else {
-                    item->power = 0;
+            Prog *prog = getProgByActuatorId(i2l.item[i].p0, &prog_list);
+            if (prog != NULL) {
+                if (lockMutex(&prog->mutex)) {
+                    if (item != NULL) {
+                        if (i2l.item[i].p1 >= 0) {
+                            item->power = (double) i2l.item[i].p1;
+                        } else {
+                            item->power = 0;
+                        }
+                    }
+                    unlockMutex(&prog->mutex);
                 }
             }
+
         }
         return;
     }
@@ -294,68 +290,53 @@ void progControl(Prog * item) {
 
 }
 
+void cleanup_handler(void *arg) {
+    Prog *item = arg;
+    printf("cleaning up thread %d\n", item->id);
+}
+
 void *threadFunction(void *arg) {
-    THREAD_DEF_CMD
+    Prog *item = arg;
 #ifdef MODE_DEBUG
-            puts("threadFunction: running...");
+    printf("thread for program with id=%d has been started\n", item->id);
+#endif
+#ifdef MODE_DEBUG
+    pthread_cleanup_push(cleanup_handler, item);
 #endif
     while (1) {
         struct timespec t1 = getCurrentTime();
-
-        lockProgList();
-        Prog *item = prog_list.top;
-        unlockProgList();
-        while (1) {
-            if (item == NULL) {
-                break;
-            }
-            if (tryLockProg(item)) {
-
+        int old_state;
+        if (threadCancelDisable(&old_state)) {
+            if (lockMutex(&item->mutex)) {
                 progControl(item);
-                Prog *temp = item;
-                item = item->next;
-                unlockProg(temp);
+                unlockMutex(&item->mutex);
             }
-            THREAD_EXIT_ON_CMD
+            threadSetCancelState(old_state);
         }
-        THREAD_EXIT_ON_CMD
-        sleepRest(cycle_duration, t1);
+        sleepRest(item->cycle_duration, t1);
     }
-}
-
-void freeProg(ProgList * list) {
-    Prog *item = list->top, *temp;
-    while (item != NULL) {
-
-        temp = item;
-        item = item->next;
-        free(temp);
-    }
-    list->top = NULL;
-    list->last = NULL;
-    list->length = 0;
+#ifdef MODE_DEBUG
+    pthread_cleanup_pop(1);
+#endif
 }
 
 void freeData() {
-
-    THREAD_STOP
-    freeProg(&prog_list);
-    FREE_LIST(&i2l);
+    stopAllProgThreads(&prog_list);
+    freeProgList(&prog_list);
     FREE_LIST(&i1l);
+    FREE_LIST(&i2l);
 #ifdef MODE_DEBUG
     puts("freeData: done");
 #endif
 }
 
 void freeApp() {
-
     freeData();
     freeSocketFd(&sock_fd);
     freeMutex(&progl_mutex);
 }
 
 void exit_nicely() {
-
     freeApp();
 #ifdef MODE_DEBUG
     puts("\nBye...");
@@ -365,7 +346,6 @@ void exit_nicely() {
 
 void exit_nicely_e(char *s) {
 #ifdef MODE_DEBUG
-
     fprintf(stderr, "%s", s);
 #endif
     freeApp();
@@ -373,12 +353,6 @@ void exit_nicely_e(char *s) {
 }
 
 int main(int argc, char** argv) {
-    if (geteuid() != 0) {
-#ifdef MODE_DEBUG
-        fprintf(stderr, "%s: root user expected\n", APP_NAME_STR);
-#endif
-        return (EXIT_FAILURE);
-    }
 #ifndef MODE_DEBUG
     daemon(0, 0);
 #endif
@@ -388,49 +362,34 @@ int main(int argc, char** argv) {
     }
     int data_initialized = 0;
     while (1) {
+#ifdef MODE_DEBUG
+        printf("main(): %s %d\n", getAppState(app_state), data_initialized);
+#endif
         switch (app_state) {
             case APP_INIT:
-#ifdef MODE_DEBUG
-                puts("MAIN: init");
-#endif
                 initApp();
                 app_state = APP_INIT_DATA;
                 break;
             case APP_INIT_DATA:
-#ifdef MODE_DEBUG
-                puts("MAIN: init data");
-#endif
                 data_initialized = initData();
                 app_state = APP_RUN;
                 delayUsIdle(1000000);
                 break;
             case APP_RUN:
-#ifdef MODE_DEBUG
-                puts("MAIN: run");
-#endif
                 serverRun(&app_state, data_initialized);
                 break;
             case APP_STOP:
-#ifdef MODE_DEBUG
-                puts("MAIN: stop");
-#endif
                 freeData();
                 data_initialized = 0;
                 app_state = APP_RUN;
                 break;
             case APP_RESET:
-#ifdef MODE_DEBUG
-                puts("MAIN: reset");
-#endif
                 freeApp();
                 delayUsIdle(1000000);
                 data_initialized = 0;
                 app_state = APP_INIT;
                 break;
             case APP_EXIT:
-#ifdef MODE_DEBUG
-                puts("MAIN: exit");
-#endif
                 exit_nicely();
                 break;
             default:

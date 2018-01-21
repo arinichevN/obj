@@ -1,7 +1,7 @@
 
 #include "main.h"
 
-int checkProg(const Prog *item, const ProgList *list) {
+int checkProg(const Prog *item, ProgList *list) {
     if (item->matter.mass <= 0) {
         fprintf(stderr, "checkProg(): expected matter_mass > 0 in prog with id = %d\n", item->id);
         return 0;
@@ -26,11 +26,83 @@ int checkProg(const Prog *item, const ProgList *list) {
         fprintf(stderr, "checkProg(): heater_id already exists where prog id = %d\n", item->id);
         return 0;
     }
-    //unique id
-    if (getProgById(item->id, list) != NULL) {
-        fprintf(stderr, "checkProg(): prog with id = %d is already running\n", item->id);
+    return 1;
+}
+
+
+int getProg_callback(void *d, int argc, char **argv, char **azColName) {
+    ProgData * data = d;
+    Prog *item = data->prog;
+    int load = 0, enable = 0;
+    for (int i = 0; i < argc; i++) {
+         if (DB_COLUMN_IS("id")) {
+            item->id = atoi(argv[i]);
+        } else if (DB_COLUMN_IS("heater_id")) {
+            item->heater.id = atoi(argv[i]);
+        } else if (DB_COLUMN_IS("cooler_id")) {
+            item->cooler.id = atoi(argv[i]);
+        } else if (DB_COLUMN_IS("ambient_temperature")) {
+            item->ambient_temperature = atof(argv[i]);
+        } else if (DB_COLUMN_IS("matter_mass")) {
+            item->matter.mass = atof(argv[i]);
+        } else if (DB_COLUMN_IS("matter_ksh")) {
+            item->matter.ksh = atof(argv[i]);
+        } else if (DB_COLUMN_IS("loss_factor")) {
+            item->matter.kl = atof(argv[i]);
+        } else if (DB_COLUMN_IS("temperature_pipe_length")) {
+            if (!initD1List(&item->matter.temperature_pipe, atoi(argv[i]))) {
+                free(item);
+                return EXIT_FAILURE;
+            }
+        } else if (DB_COLUMN_IS("enable")) {
+            enable = atoi(argv[i]);
+        } else if (DB_COLUMN_IS("load")) {
+            load = atoi(argv[i]);
+        } else {
+            #ifdef MODE_DEBUG
+       fputs("getProg_callback(): unknown column: %s\n",stderr);
+#endif
+            
+        }
+    }
+
+    if (enable) {
+        item->state = INIT;
+    } else {
+        item->state = DISABLE;
+    }
+    if (!load) {
+        config_saveProgLoad(item->id, 1, data->db_data, NULL);
+    }
+    return EXIT_SUCCESS;
+}
+
+int getProgByIdFDB(int prog_id, Prog *item, sqlite3 *dbl, const char *db_path) {
+    if (dbl != NULL && db_path != NULL) {
+#ifdef MODE_DEBUG
+        fprintf(stderr, "getProgByIdFDB(): db xor db_path expected\n");
+#endif
         return 0;
     }
+    sqlite3 *db;
+    if (db_path != NULL) {
+        if (!db_open(db_path, &db)) {
+            return 0;
+        }
+    } else {
+        db = dbl;
+    }
+    char q[LINE_SIZE];
+    ProgData data = {.db_data = db, .prog = item};
+    snprintf(q, sizeof q, "select " PROG_FIELDS " from prog where id=%d", prog_id);
+    if (!db_exec(db, q, getProg_callback, &data)) {
+#ifdef MODE_DEBUG
+        fprintf(stderr, "getProgByIdFDB(): query failed: %s\n", q);
+#endif
+        sqlite3_close(db);
+        return 0;
+    }
+    sqlite3_close(db);
     return 1;
 }
 
@@ -46,9 +118,9 @@ int addProg(Prog *item, ProgList *list) {
         list->top = item;
         unlockProgList();
     } else {
-        lockProg(list->last);
+        lockMutex(&list->last->mutex);
         list->last->next = item;
-        unlockProg(list->last);
+        unlockMutex(&list->last->mutex);
     }
     list->last = item;
     list->length++;
@@ -58,119 +130,50 @@ int addProg(Prog *item, ProgList *list) {
     return 1;
 }
 
-void saveProgLoad(int id, int v, sqlite3 *db) {
-    char q[LINE_SIZE];
-    snprintf(q, sizeof q, "update prog set load=%d where id=%d", v, id);
-    if (!db_exec(db, q, 0, 0)) {
-#ifdef MODE_DEBUG
-        fprintf(stderr, "saveProgLoad: query failed: %s\n", q);
-#endif
-    }
-}
-
-void saveProgEnable(int id, int v, const char* db_path) {
-    sqlite3 *db;
-    if (!db_open(db_path, &db)) {
-        printfe("saveProgEnable: failed to open db: %s\n", db_path);
-        return;
-    }
-    char q[LINE_SIZE];
-    snprintf(q, sizeof q, "update prog set enable=%d where id=%d", v, id);
-    if (!db_exec(db, q, 0, 0)) {
-        printfe("saveProgEnable: query failed: %s\n", q);
-    }
-}
-
-int loadProg_callback(void *d, int argc, char **argv, char **azColName) {
-    ProgData *data = d;
-    Prog *item = (Prog *) malloc(sizeof *(item));
-    if (item == NULL) {
-        fputs("loadProg_callback: failed to allocate memory\n", stderr);
-        return 0;
-    }
-    memset(item, 0, sizeof *item);
-    int load = 0, enable = 0;
-    for (int i = 0; i < argc; i++) {
-        if (strcmp("id", azColName[i]) == 0) {
-            item->id = atoi(argv[i]);
-        } else if (strcmp("heater_id", azColName[i]) == 0) {
-            item->heater.id = atoi(argv[i]);
-        } else if (strcmp("cooler_id", azColName[i]) == 0) {
-            item->cooler.id = atoi(argv[i]);
-        } else if (strcmp("ambient_temperature", azColName[i]) == 0) {
-            item->ambient_temperature = atof(argv[i]);
-        } else if (strcmp("matter_mass", azColName[i]) == 0) {
-            item->matter.mass = atof(argv[i]);
-        } else if (strcmp("matter_ksh", azColName[i]) == 0) {
-            item->matter.ksh = atof(argv[i]);
-        } else if (strcmp("loss_factor", azColName[i]) == 0) {
-            item->matter.kl = atof(argv[i]);
-        } else if (strcmp("temperature_pipe_length", azColName[i]) == 0) {
-            if (!initD1List(&item->matter.temperature_pipe, atoi(argv[i]))) {
-                free(item);
-                return EXIT_FAILURE;
-            }
-        } else if (strcmp("enable", azColName[i]) == 0) {
-            enable = atoi(argv[i]);
-        } else if (strcmp("load", azColName[i]) == 0) {
-            load = atoi(argv[i]);
-        } else {
-            putse("loadProg_callback: unknown column: %s\n");
-        }
-    }
-
-    if (enable) {
-        item->state = INIT;
-    } else {
-        item->state = OFF;
-    }
-
-    item->next = NULL;
-
-    if (!initMutex(&item->mutex)) {
-        free(item);
-        return EXIT_FAILURE;
-    }
-    if (!checkProg(item, data->prog_list)) {
-        free(item);
-        return EXIT_FAILURE;
-    }
-    if (!addProg(item, data->prog_list)) {
-        free(item);
-        return EXIT_FAILURE;
-    }
-    if (!load) {
-        saveProgLoad(item->id, 1, data->db);
-    }
-    return (EXIT_SUCCESS);
-}
-
-int addProgById(int prog_id, ProgList *list, const char *db_path) {
+int addProgById(int prog_id, ProgList *list, sqlite3 * db, const char *db_path) {
     Prog *rprog = getProgById(prog_id, list);
     if (rprog != NULL) {//program is already running
 #ifdef MODE_DEBUG
-        fprintf(stderr, "WARNING: addProgById: program with id = %d is being controlled by program\n", rprog->id);
+        fprintf(stderr, "addProgById(): program with id = %d is being controlled by program\n", rprog->id);
 #endif
         return 0;
     }
-    sqlite3 *db;
-    if (!db_open(db_path, &db)) {
+
+    Prog *item = malloc(sizeof *(item));
+    if (item == NULL) {
+        fputs("addProgById(): failed to allocate memory\n", stderr);
         return 0;
     }
-    ProgData data = {db, list};
-    char q[LINE_SIZE];
-    snprintf(q, sizeof q, "select " PROG_FIELDS " from prog where id=%d", prog_id);
-    if (!db_exec(db, q, loadProg_callback, (void*) &data)) {
-#ifdef MODE_DEBUG
-        fprintf(stderr, "addProgById: query failed: %s\n", q);
-#endif
-        sqlite3_close(db);
+    memset(item, 0, sizeof *item);
+    item->id = prog_id;
+    item->next = NULL;
+    item->cycle_duration = cycle_duration;
+    if (!initMutex(&item->mutex)) {
+        free(item);
         return 0;
     }
-    sqlite3_close(db);
+    if (!getProgByIdFDB(item->id, item, db, db_path)) {
+        freeMutex(&item->mutex);
+        free(item);
+        return 0;
+    }
+    if (!checkProg(item, list)) {
+        freeMutex(&item->mutex);
+        free(item);
+        return 0;
+    }
+    if (!addProg(item, list)) {
+        freeMutex(&item->mutex);
+        free(item);
+        return 0;
+    }
+    if (!createMThread(&item->thread, &threadFunction, item)) {
+        freeMutex(&item->mutex);
+        free(item);
+        return 0;
+    }
     return 1;
 }
-
 int deleteProgById(int id, ProgList *list, const char* db_path) {
 #ifdef MODE_DEBUG
     printf("prog to delete: %d\n", id);
@@ -180,15 +183,10 @@ int deleteProgById(int id, ProgList *list, const char* db_path) {
     curr = list->top;
     while (curr != NULL) {
         if (curr->id == id) {
-            sqlite3 *db;
-            if (db_open(db_path, &db)) {
-                saveProgLoad(curr->id, 0, db);
-                sqlite3_close(db);
-            }
             if (prev != NULL) {
-                lockProg(prev);
+                lockMutex(&prev->mutex);
                 prev->next = curr->next;
-                unlockProg(prev);
+                unlockMutex(&prev->mutex);
             } else {//curr=top
                 lockProgList();
                 list->top = curr->next;
@@ -198,10 +196,9 @@ int deleteProgById(int id, ProgList *list, const char* db_path) {
                 list->last = prev;
             }
             list->length--;
-            //we will wait other threads to finish curr program and then we will free it
-            lockProg(curr);
-            unlockProg(curr);
-            free(curr);
+            stopProgThread(curr);
+            config_saveProgLoad(curr->id, 0, NULL, db_path);
+            freeProg(curr);
 #ifdef MODE_DEBUG
             printf("prog with id: %d deleted from prog_list\n", id);
 #endif
@@ -215,45 +212,33 @@ int deleteProgById(int id, ProgList *list, const char* db_path) {
     return done;
 }
 
+int loadActiveProg_callback(void *d, int argc, char **argv, char **azColName) {
+    ProgData *data = d;
+    for (int i = 0; i < argc; i++) {
+        if (DB_COLUMN_IS("id")) {
+            int id = atoi(argv[i]);
+            addProgById(id, data->prog_list,data->db_data,NULL);
+        } else {
+            fputs("loadActiveProg_callback(): unknown column\n", stderr);
+        }
+    }
+    return EXIT_SUCCESS;
+}
+
 int loadActiveProg(ProgList *list, char *db_path) {
     sqlite3 *db;
     if (!db_open(db_path, &db)) {
         return 0;
     }
-    ProgData data = {db,  list};
-    char *q = "select " PROG_FIELDS " from prog where load=1";
-    if (!db_exec(db, q, loadProg_callback, (void*) &data)) {
+    ProgData data={.db_data=db, .prog_list=list};
+    char *q = "select id from prog where load=1";
+    if (!db_exec(db, q, loadActiveProg_callback, &data)) {
 #ifdef MODE_DEBUG
-        fprintf(stderr, "loadActiveProg: query failed: %s\n", q);
+        fprintf(stderr, "loadActiveProg(): query failed: %s\n", q);
 #endif
         sqlite3_close(db);
         return 0;
     }
     sqlite3_close(db);
     return 1;
-}
-
-int loadAllProg(ProgList *list,  char *db_path) {
-    sqlite3 *db;
-    if (!db_open(db_path, &db)) {
-        return 0;
-    }
-    ProgData data = {db,  list};
-    char *q = "select " PROG_FIELDS " from prog";
-    if (!db_exec(db, q, loadProg_callback, (void*) &data)) {
-#ifdef MODE_DEBUG
-        fprintf(stderr, "loadAllProg: query failed: %s\n", q);
-#endif
-        sqlite3_close(db);
-        return 0;
-    }
-    sqlite3_close(db);
-    return 1;
-}
-
-int reloadProgById(int id, ProgList *list, const char* db_path) {
-    if (deleteProgById(id, list, db_path)) {
-        return 1;
-    }
-    return addProgById(id, list, db_path);
 }

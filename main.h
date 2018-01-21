@@ -30,9 +30,9 @@
 
 #define PROG_FIELDS "id,heater_id,cooler_id,ambient_temperature,matter_mass,matter_ksh,loss_factor,temperature_pipe_length,enable,load"
 
-#define PROG_LIST_LOOP_DF {Prog *item = prog_list.top;
-#define PROG_LIST_LOOP_ST while (item != NULL) {
+#define PROG_LIST_LOOP_ST {Prog *item = prog_list.top; while (item != NULL) {
 #define PROG_LIST_LOOP_SP item = item->next; } item = prog_list.top;}
+
 
 #define FSTR "%.3f"
 
@@ -57,6 +57,9 @@ struct prog_st {
     Actuator heater;
     Actuator cooler;
     int state;
+    
+    struct timespec cycle_duration;
+    pthread_t thread;
     Mutex mutex;
     struct prog_st *next;
 };
@@ -65,11 +68,12 @@ typedef struct prog_st Prog;
 
 DEC_LLIST(Prog)
 
+
 typedef struct {
-    sqlite3 *db;
+   sqlite3 *db_data;
+    Prog * prog;
     ProgList *prog_list;
 } ProgData;
-
 
 enum {
     ON = 1,
@@ -92,10 +96,6 @@ extern void serverRun(int *state, int init_state) ;
 extern void progControl(Prog *item) ;
 
 extern void *threadFunction(void *arg) ;
-
-extern int createThread_ctl() ;
-
-extern void freeProg(ProgList * list) ;
 
 extern void freeData() ;
 

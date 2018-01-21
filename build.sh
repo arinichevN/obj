@@ -50,14 +50,14 @@ function conf_autostart {
 
 function build_lib {
 	gcc $1  -c app.c -D_REENTRANT $DEBUG_PARAM -lpthread && \
-	gcc $1  -c crc.c $DEBUG_PARAM && \
-	gcc $1  -c dbl.c -DSQLITE_THREADSAFE=2 -DSQLITE_OMIT_LOAD_EXTENSION $DEBUG_PARAM -lsqlite3 && \
-	gcc $1  -c configl.c -DSQLITE_THREADSAFE=2 -DSQLITE_OMIT_LOAD_EXTENSION $DEBUG_PARAM -lsqlite3 && \
-	gcc $1  -c timef.c $DEBUG_PARAM && \
-	gcc $1  -c udp.c $DEBUG_PARAM && \
-	gcc $1  -c util.c $DEBUG_PARAM && \
+	gcc $1  -c crc.c -D_REENTRAN $DEBUG_PARAM -lpthread && \
+	gcc $1  -c dbl.c -D_REENTRAN -DSQLITE_THREADSAFE=2 -DSQLITE_OMIT_LOAD_EXTENSION $DEBUG_PARAM -lpthread -lsqlite3 && \
+	gcc $1  -c configl.c -D_REENTRAN -DSQLITE_THREADSAFE=2 -DSQLITE_OMIT_LOAD_EXTENSION $DEBUG_PARAM -lpthread -lsqlite3 && \
+	gcc $1  -c timef.c -D_REENTRAN $DEBUG_PARAM -lpthread && \
+	gcc $1  -c udp.c -D_REENTRAN $DEBUG_PARAM -lpthread && \
+	gcc $1  -c util.c -D_REENTRAN $DEBUG_PARAM -lpthread && \
 	cd acp && \
-	gcc $1  -c main.c $DEBUG_PARAM && \
+	gcc $1  -c main.c -D_REENTRAN $DEBUG_PARAM -lpthread && \
 	cd ../ && \
 	echo "library: making archive..." && \
 	rm -f libpac.a
