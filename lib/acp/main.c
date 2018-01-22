@@ -131,8 +131,9 @@ static int acp_read(char *buf, size_t buf_size, Peer *peer) {
         return 0;
     }
 #ifdef MODE_DEBUG
-    printf("acp_read(): count:%ld dump:\n", n);
+    printf("acp_read(): count:%d dump:\n", n);
     acp_dumpBuf(buf, buf_size);
+    puts(buf);
 #endif
     return acp_crcCheck(buf, buf_size);
 }
@@ -970,7 +971,7 @@ int acp_readSensorFTS(SensorFTS *s) {
 
         //waiting for response...
         FTS td[1];
-        FTSList tl = {td, 0};
+        FTSList tl = {td, 0,1};
 
         memset(&td, 0, sizeof tl);
         tl.length = 0;
@@ -1003,12 +1004,8 @@ int acp_readSensorFTS(SensorFTS *s) {
 #ifdef MODE_DEBUG
             fprintf(stderr, "acp_readSensorFTS(): response: FTS state is bad where sensor.id = %d and remote_id=%d\n", s->id, s->remote_id);
 #endif
-            s->peer.active = 1;
-
-            
             return 0;
         }
-        s->peer.active = 1;
         s->value = tl.item[0];
         s->last_return = 1;
         return 1;
@@ -1034,7 +1031,7 @@ int acp_getFTS(FTS *output, Peer *peer, int remote_id) {
 
     //waiting for response...
     FTS td[1];
-    FTSList tl = {td, 0};
+    FTSList tl = {td, 0, 1};
 
     memset(&td, 0, sizeof tl);
     tl.length = 0;
@@ -1294,23 +1291,22 @@ void acp_printI3(I3List *list) {
 
 void acp_sendPeerListInfo(PeerList *pl, ACPResponse *response, Peer *peer) {
     char q[LINE_SIZE];
-    ACP_SEND_STR("+--------------------------------------------------------------------------------+\n")
-    ACP_SEND_STR("|                                       Peer                                     |\n")
-    ACP_SEND_STR("+-----------+---------------+-----------+-----------+----------------+-----------+\n")
-    ACP_SEND_STR("|    id     |    address    |   port    | sin_port  |     s_addr     |     fd    |\n")
-    ACP_SEND_STR("+-----------+---------------+-----------+-----------+----------------+-----------+\n")
+    ACP_SEND_STR("+--------------------------------------------------------------------+\n")
+    ACP_SEND_STR("|                               Peer                                 |\n")
+    ACP_SEND_STR("+-----------+---------------+-----------+-----------+----------------+\n")
+    ACP_SEND_STR("|    id     |    address    |   port    | sin_port  |     s_addr     |\n")
+    ACP_SEND_STR("+-----------+---------------+-----------+-----------+----------------+\n")
     for (int i = 0; i < pl->length; i++) {
-        snprintf(q, sizeof q, "|%11s|%15s|%11d|%11u|%16u|%11d|\n",
+        snprintf(q, sizeof q, "|%11s|%15s|%11d|%11u|%16u|\n",
                 pl->item[i].id,
                 pl->item[i].addr_str,
                 pl->item[i].port,
                 pl->item[i].addr.sin_port,
-                pl->item[i].addr.sin_addr.s_addr,
-                *pl->item[i].fd
+                pl->item[i].addr.sin_addr.s_addr
                 );
         ACP_SEND_STR(q)
     }
-    ACP_SEND_STR("+-----------+---------------+-----------+-----------+----------------+-----------+\n")
+    ACP_SEND_STR("+-----------+---------------+-----------+-----------+----------------+\n")
 }
 
 

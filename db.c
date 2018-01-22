@@ -34,30 +34,41 @@ int getProg_callback(void *d, int argc, char **argv, char **azColName) {
     ProgData * data = d;
     Prog *item = data->prog;
     int load = 0, enable = 0;
+    int c=0;
     for (int i = 0; i < argc; i++) {
          if (DB_COLUMN_IS("id")) {
             item->id = atoi(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("heater_id")) {
             item->heater.id = atoi(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("cooler_id")) {
             item->cooler.id = atoi(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("ambient_temperature")) {
             item->ambient_temperature = atof(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("matter_mass")) {
             item->matter.mass = atof(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("matter_ksh")) {
             item->matter.ksh = atof(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("loss_factor")) {
             item->matter.kl = atof(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("temperature_pipe_length")) {
             if (!initD1List(&item->matter.temperature_pipe, atoi(argv[i]))) {
                 free(item);
                 return EXIT_FAILURE;
             }
+            c++;
         } else if (DB_COLUMN_IS("enable")) {
             enable = atoi(argv[i]);
+            c++;
         } else if (DB_COLUMN_IS("load")) {
             load = atoi(argv[i]);
+            c++;
         } else {
             #ifdef MODE_DEBUG
        fputs("getProg_callback(): unknown column: %s\n",stderr);
@@ -65,7 +76,12 @@ int getProg_callback(void *d, int argc, char **argv, char **azColName) {
             
         }
     }
-
+#define N 10
+    if (c != N) {
+        fprintf(stderr, "getProg_callback(): required %d columns but %d found\n", N, c);
+        return EXIT_FAILURE;
+    }
+#undef N
     if (enable) {
         item->state = INIT;
     } else {
