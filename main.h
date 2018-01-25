@@ -46,7 +46,7 @@ typedef struct {
     double energy;
     double mass;
     double ksh;
-        double kl;//loose factor
+    double kl; //loose factor
     D1List temperature_pipe;
 } Matter;
 
@@ -57,7 +57,7 @@ struct prog_st {
     Actuator heater;
     Actuator cooler;
     int state;
-    
+
     struct timespec cycle_duration;
     pthread_t thread;
     Mutex mutex;
@@ -70,7 +70,7 @@ DEC_LLIST(Prog)
 
 
 typedef struct {
-   sqlite3 *db_data;
+    sqlite3 *db_data;
     Prog * prog;
     ProgList *prog_list;
 } ProgData;
@@ -85,25 +85,25 @@ enum {
     UNKNOWN
 } StateProg;
 
-extern int readSettings() ;
+extern int readSettings();
 
-extern void initApp() ;
+extern void initApp();
 
-extern int initData() ;
+extern int initData();
 
-extern void serverRun(int *state, int init_state) ;
+extern void serverRun(int *state, int init_state);
 
-extern void progControl(Prog *item) ;
+extern void progControl(Prog *item);
 
-extern void *threadFunction(void *arg) ;
+extern void *threadFunction(void *arg);
 
-extern void freeData() ;
+extern void freeData();
 
-extern void freeApp() ;
+extern void freeApp();
 
-extern void exit_nicely() ;
+extern void exit_nicely();
 
-extern void exit_nicely_e(char *s) ;
+extern void exit_nicely_e(char *s);
 
 #endif 
 

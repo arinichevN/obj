@@ -8,7 +8,7 @@ int sock_port = -1;
 int sock_fd = -1;
 Peer peer_client = {.fd = &sock_fd, .addr_size = sizeof peer_client.addr};
 struct timespec cycle_duration = {0, 0};
-Mutex progl_mutex = {.created = 0, .attr_initialized = 0};
+Mutex progl_mutex = MUTEX_INITIALIZER;
 I1List i1l;
 I2List i2l;
 ProgList prog_list = {NULL, NULL, 0};
@@ -128,7 +128,7 @@ void serverRun(int *state, int init_state) {
             if (item != NULL) {
                 if (lockMutex(&item->mutex)) {
                     item->state = INIT;
-                    config_saveProgEnable(item->id, 1, NULL, db_data_path);
+                    db_saveTableFieldInt("prog","enable",item->id, 1, NULL, db_data_path);
                     unlockMutex(&item->mutex);
                 }
             }
@@ -141,7 +141,7 @@ void serverRun(int *state, int init_state) {
             if (item != NULL) {
                 if (lockMutex(&item->mutex)) {
                     item->state = DISABLE;
-                    config_saveProgEnable(item->id, 0, NULL, db_data_path);
+                    db_saveTableFieldInt("prog","enable",item->id, 0, NULL, db_data_path);
                     unlockMutex(&item->mutex);
                 }
             }
