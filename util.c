@@ -265,14 +265,14 @@ void printData(ACPResponse *response) {
     PROG_LIST_LOOP_SP
     SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+\n")
 
-    SEND_STR("+-----------------------------------------------------------------------+\n")
-    SEND_STR("|                           Program runtime data                        |\n")
-    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+\n")
-    SEND_STR("|    id     |   state   |heater_pwr |cooler_pwr |  energy   |temperature|\n")
-    SEND_STR("+-----------+-----------+-----------+-----------+-----------+-----------+\n")
+    SEND_STR("+---------------------------------------------------------------------------+\n")
+    SEND_STR("|                             Program runtime data                          |\n")
+    SEND_STR("+-----------+-----------+-----------+-----------+---------------+-----------+\n")
+    SEND_STR("|    id     |   state   |heater_pwr |cooler_pwr |    energy     |temperature|\n")
+    SEND_STR("+-----------+-----------+-----------+-----------+---------------+-----------+\n")
     PROG_LIST_LOOP_ST
             char *state = getStateStr(item->state);
-    snprintf(q, sizeof q, "|%11d|%11s|%11.3f|%11.3f|%11.3f|%11.3f|\n",
+    snprintf(q, sizeof q, "|%11d|%11s|%11.3f|%11.3f|%15.3f|%11.3f|\n",
             item->id,
             state,
             item->heater.power,
@@ -282,7 +282,7 @@ void printData(ACPResponse *response) {
             );
     SEND_STR(q)
     PROG_LIST_LOOP_SP
-    SEND_STR_L("+-----------+-----------+-----------+-----------+-----------+-----------+\n")
+    SEND_STR_L("+-----------+-----------+-----------+-----------+---------------+-----------+\n")
 }
 
 void printHelp(ACPResponse *response) {
