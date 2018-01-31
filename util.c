@@ -84,7 +84,7 @@ double pipe_pop(D1List *list) {
 }
 
 void pipe_move(D1List *list) {
-    for (int i = list->length - 1; i > 0; i--) {
+    for (int i = list->max_length - 1; i > 0; i--) {
         list->item[i] = list->item[i - 1];
     }
     list->item[0] = 0.0;
@@ -191,7 +191,7 @@ int bufCatProgInit(Prog *item, ACPResponse *response) {
                 item->matter.mass,
                 item->matter.ksh,
                 item->matter.kl,
-                item->matter.temperature_pipe.length
+                item->matter.temperature_pipe.max_length
                 );
         unlockMutex(&item->mutex);
         return acp_responseStrCat(response, q);
@@ -259,7 +259,7 @@ void printData(ACPResponse *response) {
             item->matter.mass,
             item->matter.ksh,
             item->matter.kl,
-            item->matter.temperature_pipe.length
+            item->matter.temperature_pipe.max_length
             );
     SEND_STR(q)
     PROG_LIST_LOOP_SP
