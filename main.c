@@ -204,7 +204,6 @@ void serverRun(int *state, int init_state) {
                     unlockMutex(&prog->mutex);
                 }
             }
-
         }
         return;
     }
@@ -279,7 +278,7 @@ void progControl(Prog * item) {
         case RUN:
             matter_ctrl(&item->matter, item->ambient_temperature, item->heater.power, item->cooler.power);
             break;
-        case DISABLE:
+        case DISABLE: 
             item->state = OFF;
             break;
         case OFF:

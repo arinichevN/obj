@@ -202,7 +202,11 @@ int bufCatProgInit(Prog *item, ACPResponse *response) {
 int bufCatProgFTS(Prog *item, ACPResponse *response) {
     if (lockMutex(&item->mutex)) {
         struct timespec tm = getCurrentTime();
-        int r= acp_responseFTSCat(item->id, item->matter.temperature, tm, 1, response);
+        int state=1;
+        if(item->state==OFF || item->state==DISABLE){
+            state=0;
+        }
+        int r= acp_responseFTSCat(item->id, item->matter.temperature, tm, state, response);
         unlockMutex(&item->mutex);
         return r;
     }
