@@ -3,27 +3,27 @@
 
 int checkProg(const Prog *item, ProgList *list) {
     if (item->matter.mass <= 0) {
-        fprintf(stderr, "checkProg(): expected matter_mass > 0 in prog with id = %d\n", item->id);
+        fprintf(stderr, "%s(): expected matter_mass > 0 in prog with id = %d\n",F, item->id);
         return 0;
     }
     if (item->matter.ksh <= 0) {
-        fprintf(stderr, "checkProg(): expected matter_ksh > 0 in prog with id = %d\n", item->id);
+        fprintf(stderr, "%s(): expected matter_ksh > 0 in prog with id = %d\n",F, item->id);
         return 0;
     }
     if (item->matter.kl < 0) {
-        fprintf(stderr, "checkProg(): expected loss_factor >= 0 in prog with id = %d\n", item->id);
+        fprintf(stderr, "%s(): expected loss_factor >= 0 in prog with id = %d\n",F, item->id);
         return 0;
     }
     if (item->matter.temperature_pipe.length < 0) {
-        fprintf(stderr, "checkProg(): expected temperature_pipe_length >= 0 in prog with id = %d\n", item->id);
+        fprintf(stderr, "%s(): expected temperature_pipe_length >= 0 in prog with id = %d\n",F, item->id);
         return 0;
     }
     if (getActuatorById(item->cooler.id, list) != NULL) {
-        fprintf(stderr, "checkProg(): cooler_id already exists where prog id = %d\n", item->id);
+        fprintf(stderr, "%s(): cooler_id already exists where prog id = %d\n",F, item->id);
         return 0;
     }
     if (getActuatorById(item->heater.id, list) != NULL) {
-        fprintf(stderr, "checkProg(): heater_id already exists where prog id = %d\n", item->id);
+        fprintf(stderr, "%s(): heater_id already exists where prog id = %d\n",F, item->id);
         return 0;
     }
     return 1;
@@ -96,7 +96,7 @@ int getProg_callback(void *d, int argc, char **argv, char **azColName) {
 int getProgByIdFDB(int prog_id, Prog *item, sqlite3 *dbl, const char *db_path) {
     if (dbl != NULL && db_path != NULL) {
 #ifdef MODE_DEBUG
-        fprintf(stderr, "%s(): dbl xor db_path expected\n", __FUNCTION__);
+        fprintf(stderr, "%s(): dbl xor db_path expected\n", F);
 #endif
         return 0;
     }
@@ -114,7 +114,7 @@ int getProgByIdFDB(int prog_id, Prog *item, sqlite3 *dbl, const char *db_path) {
     snprintf(q, sizeof q, "select " PROG_FIELDS " from prog where id=%d", prog_id);
     if (!db_exec(db, q, getProg_callback, &data)) {
 #ifdef MODE_DEBUG
-        fprintf(stderr, "%s(): query failed\n", __FUNCTION__);
+        fprintf(stderr, "%s(): query failed\n", F);
 #endif
         if(close)sqlite3_close(db);
         return 0;

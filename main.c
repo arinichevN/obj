@@ -9,8 +9,6 @@ int sock_fd = -1;
 Peer peer_client = {.fd = &sock_fd, .addr_size = sizeof peer_client.addr};
 struct timespec cycle_duration = {0, 0};
 Mutex progl_mutex = MUTEX_INITIALIZER;
-I1List i1l;
-I2List i2l;
 ProgList prog_list = {NULL, NULL, 0};
 
 #include "util.c"
@@ -63,26 +61,11 @@ void initApp() {
 }
 
 int initData() {
-    if (!initI1List(&i1l, ACP_BUFFER_MAX_SIZE)) {
-#ifdef MODE_DEBUG
-        fputs("initData: ERROR: failed to allocate memory for i1l\n", stderr);
-#endif
-        return 0;
-    }
-    if (!initI2List(&i2l, ACP_BUFFER_MAX_SIZE)) {
-#ifdef MODE_DEBUG
-        fputs("initData: ERROR: failed to allocate memory for i2l\n", stderr);
-#endif
-        FREE_LIST(&i1l);
-        return 0;
-    }
     if (!loadActiveProg(&prog_list, db_data_path)) {
 #ifdef MODE_DEBUG
         fputs("initData: ERROR: failed to load active programs\n", stderr);
 #endif
         freeProgList(&prog_list);
-        FREE_LIST(&i1l);
-        FREE_LIST(&i2l);
         return 0;
     }
     return 1;
@@ -93,7 +76,8 @@ int initData() {
 void serverRun(int *state, int init_state) {
     SERVER_HEADER
     SERVER_APP_ACTIONS
-
+    DEF_SERVER_I1LIST
+    DEF_SERVER_I2LIST
     if (ACP_CMD_IS(ACP_CMD_PROG_STOP)) {
         PARSE_I1LIST
         for (int i = 0; i < i1l.length; i++) {
@@ -128,7 +112,7 @@ void serverRun(int *state, int init_state) {
             if (item != NULL) {
                 if (lockMutex(&item->mutex)) {
                     item->state = INIT;
-                    db_saveTableFieldInt("prog","enable",item->id, 1, NULL, db_data_path);
+                    db_saveTableFieldInt("prog", "enable", item->id, 1, NULL, db_data_path);
                     unlockMutex(&item->mutex);
                 }
             }
@@ -141,7 +125,7 @@ void serverRun(int *state, int init_state) {
             if (item != NULL) {
                 if (lockMutex(&item->mutex)) {
                     item->state = DISABLE;
-                    db_saveTableFieldInt("prog","enable",item->id, 0, NULL, db_data_path);
+                    db_saveTableFieldInt("prog", "enable", item->id, 0, NULL, db_data_path);
                     unlockMutex(&item->mutex);
                 }
             }
@@ -278,7 +262,7 @@ void progControl(Prog * item) {
         case RUN:
             matter_ctrl(&item->matter, item->ambient_temperature, item->heater.power, item->cooler.power);
             break;
-        case DISABLE: 
+        case DISABLE:
             item->state = OFF;
             break;
         case OFF:
@@ -322,11 +306,6 @@ void *threadFunction(void *arg) {
 void freeData() {
     stopAllProgThreads(&prog_list);
     freeProgList(&prog_list);
-    FREE_LIST(&i1l);
-    FREE_LIST(&i2l);
-#ifdef MODE_DEBUG
-    puts("freeData: done");
-#endif
 }
 
 void freeApp() {
@@ -362,7 +341,7 @@ int main(int argc, char** argv) {
     int data_initialized = 0;
     while (1) {
 #ifdef MODE_DEBUG
-        printf("main(): %s %d\n", getAppState(app_state), data_initialized);
+        printf("%s(): %s %d\n",F, getAppState(app_state), data_initialized);
 #endif
         switch (app_state) {
             case APP_INIT:
