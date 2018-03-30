@@ -171,7 +171,7 @@ void serverRun(int *state, int init_state) {
                 }
             }
         }
-    } else if (ACP_CMD_IS(ACP_CMD_SET_PWM_DUTY_CYCLE)) {
+    } else if (ACP_CMD_IS(ACP_CMD_SET_FLOAT)) {
         PARSE_I2LIST
         for (int i = 0; i < i2l.length; i++) {
             Actuator *item = getActuatorById(i2l.item[i].p0, &prog_list);

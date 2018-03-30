@@ -320,7 +320,7 @@ void printHelp(ACPResponse *response) {
     SEND_STR(q)
     snprintf(q, sizeof q, "%s\tget prog sensor value; program id expected\n", ACP_CMD_GET_FTS);
     SEND_STR(q)
-    snprintf(q, sizeof q, "%s\tset heater of cooler power; heater or cooler id expected\n", ACP_CMD_SET_PWM_DUTY_CYCLE);
+    snprintf(q, sizeof q, "%s\tset heater of cooler power; heater or cooler id expected\n", ACP_CMD_SET_FLOAT);
     SEND_STR(q)
     snprintf(q, sizeof q, "%s\tget prog runtime data; program id expected\n", ACP_CMD_PROG_GET_DATA_RUNTIME);
     SEND_STR(q)
