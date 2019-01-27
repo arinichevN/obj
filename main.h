@@ -9,10 +9,11 @@
 #include "lib/configl.h"
 #include "lib/timef.h"
 #include "lib/udp.h"
+#include "lib/tsv.h"
 #include "lib/acp/main.h"
 #include "lib/acp/app.h"
 #include "lib/acp/regulator.h"
-#include "lib/acp/prog.h"
+#include "lib/acp/channel.h"
 #include "lib/acp/regonf.h"
 #include "lib/acp/regsmp.h"
 #include <math.h>
@@ -28,12 +29,6 @@
 #endif
 #define CONFIG_FILE "" CONF_DIR "config.tsv"
 
-#define PROG_FIELDS "id,heater_id,cooler_id,ambient_temperature,matter_mass,matter_ksh,loss_factor,temperature_pipe_length,enable,load"
-
-#define PROG_LIST_LOOP_ST {Prog *item = prog_list.top; while (item != NULL) {
-#define PROG_LIST_LOOP_SP item = item->next; } item = prog_list.top;}
-
-
 #define FSTR "%.3f"
 
 typedef struct {
@@ -47,10 +42,12 @@ typedef struct {
     double mass;
     double ksh;
     double kl; //loose factor
+    double pl;//loose power
     D1List temperature_pipe;
+    struct timespec t1; 
 } Matter;
 
-struct prog_st {
+struct channel_st {
     int id;
     double ambient_temperature;
     Matter matter;
@@ -58,22 +55,16 @@ struct prog_st {
     Actuator cooler;
     int state;
 
+    int save;
     struct timespec cycle_duration;
     pthread_t thread;
     Mutex mutex;
-    struct prog_st *next;
+    struct channel_st *next;
 };
 
-typedef struct prog_st Prog;
+typedef struct channel_st Channel;
 
-DEC_LLIST(Prog)
-
-
-typedef struct {
-    sqlite3 *db_data;
-    Prog * prog;
-    ProgList *prog_list;
-} ProgData;
+DEC_LLIST(Channel)
 
 enum {
     ON = 1,
@@ -85,15 +76,15 @@ enum {
     UNKNOWN
 } StateProg;
 
-extern int readSettings();
+extern int readSettings ( TSVresult* r,char *config_path, char **peer_id, char **db_path );
 
-extern void initApp();
+extern int initApp();
 
 extern int initData();
 
 extern void serverRun(int *state, int init_state);
 
-extern void progControl(Prog *item);
+extern void channelControl(Channel *item);
 
 extern void *threadFunction(void *arg);
 
@@ -102,8 +93,6 @@ extern void freeData();
 extern void freeApp();
 
 extern void exit_nicely();
-
-extern void exit_nicely_e(char *s);
 
 #endif 
 

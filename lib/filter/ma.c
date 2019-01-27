@@ -1,7 +1,5 @@
 #include "ma.h"
 
-FUN_LIST_GET_BY_ID(FilterMA)
-
 int fma_init(FilterMA *item, int id, int length) {
     if (length < 0) {
 #ifdef MODE_DEBUG
@@ -23,6 +21,7 @@ int fma_init(FilterMA *item, int id, int length) {
 #endif
         return 0;
     }
+    memset(item->buf, 0, length*(sizeof *item->buf));
     item->id = id;
     item->length = length;
     item->i = 0;
@@ -67,6 +66,7 @@ int fma_initList(FilterMAList *list, const char *config_path) {
 #endif
             break;
         }
+        memset(LIi.buf, 0, LIi.length*(sizeof *LIi.buf));
         LL++;
     }
     TSVclear(r);
@@ -95,7 +95,7 @@ void fma_free(FilterMA *item) {
     item->i = 0;
 }
 
-void fma_calc(float *v, void *filter) {
+void fma_calc(double *v, void *filter) {
     FilterMA *item = filter;
     if (item->length <= 0) {
         return;
@@ -108,7 +108,7 @@ void fma_calc(float *v, void *filter) {
     if (item->c_length < item->length) {
         item->c_length++;
     }
-    float s = 0.0f;
+    double s = 0.0;
     for (int i = 0; i < item->c_length; i++) {
         s += item->buf[i];
     }

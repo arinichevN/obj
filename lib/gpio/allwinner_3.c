@@ -15,11 +15,11 @@
 
 extern char *physToGpio[];
 
-volatile uint32_t *gpio;
+static volatile uint32_t *gpio;
 
-volatile uint32_t *data_reg [PIN_NUM];
-volatile uint32_t *cfg_reg [PIN_NUM];
-volatile uint32_t *pull_reg [PIN_NUM];
+static volatile uint32_t *data_reg [PIN_NUM];
+static volatile uint32_t *cfg_reg [PIN_NUM];
+static volatile uint32_t *pull_reg [PIN_NUM];
 
 int data_offset [PIN_NUM];
 int cfg_offset [PIN_NUM];
@@ -164,8 +164,12 @@ int gpioSetup() {
     return 1;
 }
 
-int gpioFree() {
-    return 1;
+void gpioFree() {
+    if(gpio !=NULL && gpio!=MAP_FAILED){
+		if(munmap((void*)gpio, BLOCK_SIZE)!=0){
+			perrord("munmap()");
+		}
+	}
 }
 
 

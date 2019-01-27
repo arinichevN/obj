@@ -2,379 +2,340 @@
 
 int app_state = APP_INIT;
 
-char db_data_path[LINE_SIZE];
+TSVresult config_tsv = TSVRESULT_INITIALIZER;
+char * db_path;
+char * peer_id;
 
 int sock_port = -1;
 int sock_fd = -1;
+
 Peer peer_client = {.fd = &sock_fd, .addr_size = sizeof peer_client.addr};
-struct timespec cycle_duration = {0, 0};
-Mutex progl_mutex = MUTEX_INITIALIZER;
-ProgList prog_list = {NULL, NULL, 0};
+Mutex channel_list_mutex = MUTEX_INITIALIZER;
+ChannelLList channel_list = LLIST_INITIALIZER;
 
 #include "util.c"
 #include "db.c"
 
-int readSettings() {
-#ifdef MODE_DEBUG
-    printf("readSettings: configuration file to read: %s\n", CONFIG_FILE);
-#endif
-    FILE* stream = fopen(CONFIG_FILE, "r");
-    if (stream == NULL) {
-#ifdef MODE_DEBUG
-        perror("readSettings()");
-#endif
+int readSettings ( TSVresult* r,char *config_path, char **peer_id, char **db_path ) {
+    if ( !TSVinit ( r, config_path ) ) {
         return 0;
     }
-    skipLine(stream);
-    int n;
-    n = fscanf(stream, "%d\t%ld\t%ld\t%255s\n",
-            &sock_port,
-            &cycle_duration.tv_sec,
-            &cycle_duration.tv_nsec,
-            db_data_path
-            );
-    if (n != 4) {
-        fclose(stream);
-#ifdef MODE_DEBUG
-        fputs("ERROR: readSettings: bad format\n", stderr);
-#endif
+    char *_peer_id = TSVgetvalues ( r, 0, "peer_id" );
+    char *_db_path = TSVgetvalues ( r, 0, "db_path" );
+    if ( TSVnullreturned ( r ) ) {
         return 0;
     }
-    fclose(stream);
-#ifdef MODE_DEBUG
-
-    printf("readSettings: \n\tsock_port: %d, \n\tcycle_duration: %ld sec %ld nsec, \n\tdb_data_path: %s\n", sock_port, cycle_duration.tv_sec, cycle_duration.tv_nsec, db_data_path);
-#endif
+    *peer_id = _peer_id;
+    *db_path = _db_path;
     return 1;
 }
 
-void initApp() {
-    if (!readSettings()) {
-        exit_nicely_e("initApp: failed to read settings\n");
+int initApp() {
+    if ( !readSettings ( &config_tsv, CONFIG_FILE, &peer_id, &db_path ) ) {
+        putsde ( "failed to read settings\n" );
+        return 0;
     }
-    if (!initMutex(&progl_mutex)) {
-        exit_nicely_e("initApp: failed to initialize prog mutex\n");
+    if ( !initMutex ( &channel_list_mutex ) ) {
+        TSVclear ( &config_tsv );
+        putsde ( "failed to initialize channel mutex\n" );
+        return 0;
     }
-    if (!initServer(&sock_fd, sock_port)) {
-        exit_nicely_e("initApp: failed to initialize udp server\n");
+    if ( !config_getPort ( &sock_port, peer_id, NULL, db_path ) ) {
+        freeMutex ( &channel_list_mutex );
+        TSVclear ( &config_tsv );
+        putsde ( "failed to read port\n" );
+        return 0;
     }
+    if ( !initServer ( &sock_fd, sock_port ) ) {
+        freeMutex ( &channel_list_mutex );
+        TSVclear ( &config_tsv );
+        putsde ( "failed to initialize udp server\n" );
+        return 0;
+    }
+    printdo ( "initApp():\n\tsock_port=%d\n\tdb_path=%s\n",sock_port, db_path );
+    return 1;
 }
 
 int initData() {
-    if (!loadActiveProg(&prog_list, db_data_path)) {
-#ifdef MODE_DEBUG
-        fputs("initData: ERROR: failed to load active programs\n", stderr);
-#endif
-        freeProgList(&prog_list);
+    if ( !loadActiveChannel ( &channel_list, &channel_list_mutex,  db_path ) ) {
+        freeChannelList ( &channel_list );
         return 0;
     }
     return 1;
 }
-#define PARSE_I1LIST acp_requestDataToI1List(&request, &i1l);if (i1l.length <= 0) {return;}
-#define PARSE_I2LIST acp_requestDataToI2List(&request, &i2l);if (i2l.length <= 0) {return;}
 
-void serverRun(int *state, int init_state) {
+void serverRun ( int *state, int init_state ) {
     SERVER_HEADER
     SERVER_APP_ACTIONS
-    DEF_SERVER_I1LIST
-    DEF_SERVER_I2LIST
-    if (ACP_CMD_IS(ACP_CMD_PROG_STOP)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                deleteProgById(i1l.item[i], &prog_list, db_data_path);
+    if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_STOP ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            deleteChannelById ( i1l.item[i], &channel_list , &channel_list_mutex,NULL, db_path );
+        }
+        return;
+    } else if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_START ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            addChannelById ( i1l.item[i], &channel_list, &channel_list_mutex ,  NULL, db_path );
+        }
+        return;
+    } else if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_RESET ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            deleteChannelById ( i1l.item[i], &channel_list , &channel_list_mutex, NULL,db_path );
+        }
+        FORLISTN ( i1l, i ) {
+            addChannelById ( i1l.item[i], &channel_list, &channel_list_mutex ,  NULL, db_path );
+        }
+        return;
+    } else if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_ENABLE ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            Channel *item;
+            LLIST_GETBYID ( item, &channel_list, i1l.item[i] );
+            if ( item == NULL ) continue;
+            if ( lockMutex ( &item->mutex ) ) {
+                item->state = INIT;
+                db_saveTableFieldInt ( "channel", "enable", item->id, 1, NULL, db_path );
+                unlockMutex ( &item->mutex );
             }
         }
         return;
-    } else if (ACP_CMD_IS(ACP_CMD_PROG_START)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            addProgById(i1l.item[i], &prog_list, NULL, db_data_path);
-        }
-        return;
-    } else if (ACP_CMD_IS(ACP_CMD_PROG_RESET)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                deleteProgById(i1l.item[i], &prog_list, db_data_path);
-            }
-        }
-        for (int i = 0; i < i1l.length; i++) {
-            addProgById(i1l.item[i], &prog_list, NULL, db_data_path);
-        }
-        return;
-    } else if (ACP_CMD_IS(ACP_CMD_PROG_ENABLE)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                if (lockMutex(&item->mutex)) {
-                    item->state = INIT;
-                    db_saveTableFieldInt("prog", "enable", item->id, 1, NULL, db_data_path);
-                    unlockMutex(&item->mutex);
-                }
+    } else if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_DISABLE ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            Channel *item;
+            LLIST_GETBYID ( item, &channel_list, i1l.item[i] );
+            if ( item == NULL ) continue;
+            if ( lockMutex ( &item->mutex ) ) {
+                item->state = DISABLE;
+                db_saveTableFieldInt ( "channel", "enable", item->id, 0, NULL, db_path );
+                unlockMutex ( &item->mutex );
             }
         }
         return;
-    } else if (ACP_CMD_IS(ACP_CMD_PROG_DISABLE)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                if (lockMutex(&item->mutex)) {
-                    item->state = DISABLE;
-                    db_saveTableFieldInt("prog", "enable", item->id, 0, NULL, db_data_path);
-                    unlockMutex(&item->mutex);
-                }
-            }
+    } else if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_GET_DATA_RUNTIME ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            Channel *item;
+            LLIST_GETBYID ( item, &channel_list, i1l.item[i] );
+            if ( item == NULL ) continue;
+            if ( !bufCatChannelRuntime ( item, &response ) ) return;
         }
-        return;
-    } else if (ACP_CMD_IS(ACP_CMD_PROG_GET_DATA_RUNTIME)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                if (!bufCatProgRuntime(item, &response)) {
-                    return;
-                }
-            }
+    } else if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_GET_DATA_INIT ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            Channel *item;
+            LLIST_GETBYID ( item, &channel_list, i1l.item[i] );
+            if ( item == NULL ) continue;
+            if ( !bufCatChannelInit ( item, &response ) ) return;
         }
-    } else if (ACP_CMD_IS(ACP_CMD_PROG_GET_DATA_INIT)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                if (!bufCatProgInit(item, &response)) {
-                    return;
-                }
-            }
+    } else if ( ACP_CMD_IS ( ACP_CMD_CHANNEL_GET_ENABLED ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            Channel *item;
+            LLIST_GETBYID ( item, &channel_list, i1l.item[i] );
+            if ( item == NULL ) continue;
+            if ( !bufCatChannelEnabled ( item, &response ) ) return;
         }
-    } else if (ACP_CMD_IS(ACP_CMD_PROG_GET_ENABLED)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                if (!bufCatProgEnabled(item, &response)) {
-                    return;
-                }
-            }
+    } else if ( ACP_CMD_IS ( ACP_CMD_GET_FTS ) ) {
+        SERVER_GET_I1LIST_FROM_REQUEST
+        FORLISTN ( i1l, i ) {
+            Channel *item;
+            LLIST_GETBYID ( item, &channel_list, i1l.item[i] );
+            if ( item == NULL ) continue;
+            if ( !bufCatChannelFTS ( item, &response ) ) return;
         }
-    } else if (ACP_CMD_IS(ACP_CMD_GET_FTS)) {
-        PARSE_I1LIST
-        for (int i = 0; i < i1l.length; i++) {
-            Prog *item = getProgById(i1l.item[i], &prog_list);
-            if (item != NULL) {
-                if (!bufCatProgFTS(item, &response)) {
-                    return;
+    } else if ( ACP_CMD_IS ( ACP_CMD_SET_FLOAT ) ) {
+        SERVER_GET_I1F1LIST_FROM_REQUEST
+        FORLISTN ( i1f1l, i ) {
+            Actuator *item = getActuatorById ( i1f1l.item[i].p0, &channel_list );
+            Channel *channel = getChannelByActuatorId ( i1f1l.item[i].p0, &channel_list );
+            if ( item==NULL || channel==NULL ) continue;
+            if ( lockMutex ( &channel->mutex ) ) {
+                if ( i1f1l.item[i].p1 >= 0.0 ) {
+                    item->power = i1f1l.item[i].p1;
+                } else {
+                    item->power = 0.0;
                 }
+                unlockMutex ( &channel->mutex );
             }
-        }
-    } else if (ACP_CMD_IS(ACP_CMD_SET_FLOAT)) {
-        PARSE_I2LIST
-        for (int i = 0; i < i2l.length; i++) {
-            Actuator *item = getActuatorById(i2l.item[i].p0, &prog_list);
-            Prog *prog = getProgByActuatorId(i2l.item[i].p0, &prog_list);
-            if (prog != NULL) {
-                if (lockMutex(&prog->mutex)) {
-                    if (item != NULL) {
-                        if (i2l.item[i].p1 >= 0) {
-                            item->power = (double) i2l.item[i].p1;
-                        } else {
-                            item->power = 0;
-                        }
-                    }
-                    unlockMutex(&prog->mutex);
-                }
-            }
+
         }
         return;
     }
 
-    acp_responseSend(&response, &peer_client);
+    acp_responseSend ( &response, &peer_client );
 }
-#define FX pow((item->kl), (0.2 * (item->temperature - ambient_temperature)))
-#define FX1 item->kl * (item->temperature - ambient_temperature)
 
-void matter_ctrl(Matter *item, double ambient_temperature, double heater_power, double cooler_power) {
+#define PER_TIME(V,DTM) (V*DTM.tv_sec*1000.0 + V*DTM.tv_nsec/1000000.0)
+void matter_ctrl ( Matter *item, double ambient_temperature, double heater_power, double cooler_power ) {
+    struct timespec dTM=getTimePassed_ts ( item->t1 );
+    double temperature_k=item->energy / ( item->ksh * item->mass );
+    double ambient_temperature_k=273+ambient_temperature;
     double dE = 0.0;
-    //aiming to ambient
-    if (item->temperature > ambient_temperature) {
-        dE = -(FX);
-#ifdef MODE_DEBUG
-        printf("\tcooling ");
-#endif
-    } else if (item->temperature < ambient_temperature) {
-        dE = FX;
-#ifdef MODE_DEBUG
-        printf("\theating ");
-#endif
-    } else {
-#ifdef MODE_DEBUG
-        printf("\tstable ");
-#endif
+    //aiming to ambient temperature
+    double dTemp= ( temperature_k > ambient_temperature_k ) ? ( temperature_k - ambient_temperature_k ) : ( ambient_temperature_k - temperature_k );
+    //double aE=pow((dTemp*(item->kl)), (0.2 * dTemp));
+    double aE=item->kl * pow ( dTemp, item->pl );
+    aE=PER_TIME ( aE, dTM );
+    if ( temperature_k > ambient_temperature_k ) {
+        dE -= aE;
+    } else if ( temperature_k < ambient_temperature_k ) {
+        dE += aE;
     }
-#ifdef MODE_DEBUG
-    printf("adE:%f ", dE);
-#endif
     //actuator affect
-    dE += heater_power;
-    dE -= cooler_power;
+    double actuator_power=heater_power-cooler_power;
+    dE += PER_TIME ( actuator_power, dTM );
     //total affect
     item->energy += dE;
-    if (item->energy < 0.0) {
+    if ( item->energy < 0.0 ) {
         item->energy = 0.0;
         dE = 0.0;
     }
-    //temperature computation
-    double dT = dE / (item->ksh * item->mass);
-#ifdef MODE_DEBUG
-    printf("tdE:%f dT:%f\n", dE, dT);
-#endif
-    if (item->temperature_pipe.length > 0) {//delay for temperature
-        pipe_move(&item->temperature_pipe);
-        pipe_push(&item->temperature_pipe, dT);
-        item->temperature += pipe_pop(&item->temperature_pipe);
+    //delay for temperature
+    double temperature_c=temperature_k-273;
+    if ( item->temperature_pipe.max_length > 0 ) {
+        pipe_move ( &item->temperature_pipe );
+        pipe_push ( &item->temperature_pipe, temperature_c );
+        item->temperature = pipe_pop ( &item->temperature_pipe );
     } else {
-        item->temperature += dT;
+        item->temperature = temperature_c;
     }
+#ifdef MODE_DEBUG
+   // pipe_print ( &item->temperature_pipe );
+#endif
+    item->t1=getCurrentTime();
 }
 
-void progControl(Prog * item) {
+void channelControl ( Channel * item ) {
 #ifdef MODE_DEBUG
-    char *state = getStateStr(item->state);
-    printf("prog: id:%d state:%s temp:%.2f energy:%.2f heater_pwr:%.2f cooler_pwr:%.2f \n",
-            item->id,
-            state,
-            item->matter.temperature,
-            item->matter.energy,
-            item->heater.power,
-            item->cooler.power
-            );
+    char *state = getStateStr ( item->state );
+    printf ( "channel: id:%d state:%s temp:%.2f energy:%.2f power(h c):%.2f %.2f \n",
+             item->id,
+             state,
+             item->matter.temperature,
+             item->matter.energy,
+             item->heater.power,
+             item->cooler.power
+           );
 #endif
-    switch (item->state) {
-        case INIT:
-            item->matter.temperature = item->ambient_temperature;
-            item->matter.energy = item->matter.temperature * item->matter.ksh * item->matter.mass;
-            item->state = RUN;
-            break;
-        case RUN:
-            matter_ctrl(&item->matter, item->ambient_temperature, item->heater.power, item->cooler.power);
-            break;
-        case DISABLE:
-            item->state = OFF;
-            break;
-        case OFF:
-            break;
-        default:
-            break;
+    switch ( item->state ) {
+    case INIT:
+        item->matter.temperature = item->ambient_temperature;
+        item->matter.energy = ( item->matter.temperature+273.0 ) * item->matter.ksh * item->matter.mass;
+        pipe_fill ( &item->matter.temperature_pipe, item->matter.temperature );
+        item->state = RUN;
+        break;
+    case RUN:
+        matter_ctrl ( &item->matter, item->ambient_temperature, item->heater.power, item->cooler.power );
+        break;
+    case DISABLE:
+        item->state = OFF;
+        break;
+    case OFF:
+        break;
+    default:
+        break;
     }
 
 }
 
-void cleanup_handler(void *arg) {
-    Prog *item = arg;
-    printf("cleaning up thread %d\n", item->id);
+void cleanup_handler ( void *arg ) {
+    Channel *item = arg;
+    printf ( "cleaning up thread %d\n", item->id );
 }
 
-void *threadFunction(void *arg) {
-    Prog *item = arg;
+void *threadFunction ( void *arg ) {
+    Channel *item = arg;
+    printdo ( "thread for channel with id=%d has been started\n", item->id );
 #ifdef MODE_DEBUG
-    printf("thread for program with id=%d has been started\n", item->id);
+    pthread_cleanup_push ( cleanup_handler, item );
 #endif
-#ifdef MODE_DEBUG
-    pthread_cleanup_push(cleanup_handler, item);
-#endif
-    while (1) {
+    while ( 1 ) {
         struct timespec t1 = getCurrentTime();
         int old_state;
-        if (threadCancelDisable(&old_state)) {
-            if (lockMutex(&item->mutex)) {
-                progControl(item);
-                unlockMutex(&item->mutex);
+        if ( threadCancelDisable ( &old_state ) ) {
+            if ( lockMutex ( &item->mutex ) ) {
+                channelControl ( item );
+                unlockMutex ( &item->mutex );
             }
-            threadSetCancelState(old_state);
+            threadSetCancelState ( old_state );
         }
-        sleepRest(item->cycle_duration, t1);
+        delayTsIdleRest ( item->cycle_duration, t1 );
     }
 #ifdef MODE_DEBUG
-    pthread_cleanup_pop(1);
+    pthread_cleanup_pop ( 1 );
 #endif
 }
 
 void freeData() {
-    stopAllProgThreads(&prog_list);
-    freeProgList(&prog_list);
+    STOP_ALL_CHANNEL_THREADS ( &channel_list );
+    freeChannelList ( &channel_list );
 }
 
 void freeApp() {
     freeData();
-    freeSocketFd(&sock_fd);
-    freeMutex(&progl_mutex);
+    freeSocketFd ( &sock_fd );
+    freeMutex ( &channel_list_mutex );
+    TSVclear ( &config_tsv );
 }
 
-void exit_nicely() {
+void exit_nicely ( ) {
     freeApp();
-#ifdef MODE_DEBUG
-    puts("\nBye...");
-#endif
-    exit(EXIT_SUCCESS);
+    putsdo ( "\nexiting now...\n" );
+    exit ( EXIT_SUCCESS );
 }
 
-void exit_nicely_e(char *s) {
-#ifdef MODE_DEBUG
-    fprintf(stderr, "%s", s);
-#endif
-    freeApp();
-    exit(EXIT_FAILURE);
-}
-
-int main(int argc, char** argv) {
+int main ( int argc, char** argv ) {
 #ifndef MODE_DEBUG
-    daemon(0, 0);
+    daemon ( 0, 0 );
 #endif
-    conSig(&exit_nicely);
-    if (mlockall(MCL_CURRENT | MCL_FUTURE) == -1) {
-        perror("main: memory locking failed");
+    conSig ( &exit_nicely );
+    if ( mlockall ( MCL_CURRENT | MCL_FUTURE ) == -1 ) {
+        perrorl ( "mlockall()" );
     }
     int data_initialized = 0;
-    while (1) {
+    while ( 1 ) {
 #ifdef MODE_DEBUG
-        printf("%s(): %s %d\n",F, getAppState(app_state), data_initialized);
+        printf ( "%s(): %s %d\n",F, getAppState ( app_state ), data_initialized );
 #endif
-        switch (app_state) {
-            case APP_INIT:
-                initApp();
-                app_state = APP_INIT_DATA;
-                break;
-            case APP_INIT_DATA:
-                data_initialized = initData();
-                app_state = APP_RUN;
-                delayUsIdle(1000000);
-                break;
-            case APP_RUN:
-                serverRun(&app_state, data_initialized);
-                break;
-            case APP_STOP:
-                freeData();
-                data_initialized = 0;
-                app_state = APP_RUN;
-                break;
-            case APP_RESET:
-                freeApp();
-                delayUsIdle(1000000);
-                data_initialized = 0;
-                app_state = APP_INIT;
-                break;
-            case APP_EXIT:
-                exit_nicely();
-                break;
-            default:
-                exit_nicely_e("main: unknown application state");
-                break;
+        switch ( app_state ) {
+        case APP_INIT:
+            if ( !initApp() ) {
+                return ( EXIT_FAILURE );
+            }
+            app_state = APP_INIT_DATA;
+            break;
+        case APP_INIT_DATA:
+            data_initialized = initData();
+            app_state = APP_RUN;
+            delayUsIdle ( 1000000 );
+            break;
+        case APP_RUN:
+            serverRun ( &app_state, data_initialized );
+            break;
+        case APP_STOP:
+            freeData();
+            data_initialized = 0;
+            app_state = APP_RUN;
+            break;
+        case APP_RESET:
+            freeApp();
+            delayUsIdle ( 1000000 );
+            data_initialized = 0;
+            app_state = APP_INIT;
+            break;
+        case APP_EXIT:
+            exit_nicely();
+            break;
+        default:
+            freeApp();
+            putsde ( "unknown application state\n" );
+            return ( EXIT_FAILURE );
         }
     }
     freeApp();
-    return (EXIT_SUCCESS);
+    putsde ( "unexpected while break\n" );
+    return ( EXIT_FAILURE );
 }

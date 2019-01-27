@@ -1,6 +1,25 @@
-delete from prog;
-INSERT INTO prog(id,heater_id,cooler_id,ambient_temperature,matter_mass,matter_ksh,loss_factor,temperature_pipe_length,enable,load) VALUES 
-(1,5,6,20.0,500,1200,1.2,1000,1,1);
+INSERT OR REPLACE INTO "peer" VALUES
+('gwu18_1',49161,'127.0.0.1'),
+('gwu22_1',49162,'127.0.0.1'),
+('gwu18_2',49161,'127.0.0.1'),
+('gwu22_2',49162,'127.0.0.1'),
+('regonf_1',49191,'127.0.0.1'),
+('gwu74_1',49163,'127.0.0.1'),
+('lck_1',49175,'127.0.0.1'),
+('lgr_1',49172,'127.0.0.1'),
+('gwu59_1',49164,'127.0.0.1'),
+('alp_1',49171,'127.0.0.1'),
+('alr_1',49174,'127.0.0.1'),
+('regsmp_1',49192,'127.0.0.1'),
+('stp_1',49179,'127.0.0.1'),
+('obj_1',49178,'127.0.0.1'),
+('swr_1',49183,'127.0.0.1'),
+('swf_1',49182,'127.0.0.1');
+INSERT OR REPLACE INTO channel(id,heater_id,cooler_id,ambient_temperature,matter_mass,matter_ksh,loss_factor,loss_power,temperature_pipe_length,cycle_duration_sec,cycle_duration_nsec,save,enable,load) VALUES 
+(1,11,12,20.0,500,1200,1.0,2.0,1000,3,100000,1,1,1),
+(2,13,14,20.0,500,1200,1.0,2.0,1000,3,100000,1,1,1),
+(3,15,16,20.0,500,1200,1.0,2.0,1000,3,100000,1,1,1),
+(4,17,18,20.0,500,1200,1.0,2.0,1000,3,100000,1,1,1);
 
 
 

@@ -1,2 +1,2 @@
-port	cycle_duration_sec	cycle_duration_nsec	private_db_file
-49178	0	10000000	/etc/controller/obj/data.db
+peer_id	db_path
+obj_1	/etc/controller/obj/data.db

@@ -29,11 +29,15 @@ char * reg_getStateStr(char state) {
     return "";
 }
 
-int reg_controlEM(EM *item, float output) {
+ int reg_sensorRead ( RegSensor *item ){
+     return acp_getRChannelFTS ( &item->input, &item->remote_channel );
+ }
+
+int reg_controlRChannel(RChannel *item, double output) {
     if (item == NULL) {
         return 0;
     }
-    return acp_setEMFloat(item, output);
+    return acp_setRChannelFloat(item, output);
 }
 
 static int getRegSecureList_callback(void *data, int argc, char **argv, char **azColName) {
@@ -129,6 +133,7 @@ int reg_secureNeed(RegSecure *item) {
     }
     if (ton_ts(item->timeout, &item->tmr)) {
         item->done = 1;
+        BIT_ENABLE(*item->error_code, PROG_ERROR_NO_SIGNAL_FROM_CLIENT);
         return 1;
     }
     return 0;
@@ -137,5 +142,6 @@ int reg_secureNeed(RegSecure *item) {
 void reg_secureTouch(RegSecure *item) {
     item->done = 0;
     ton_ts_reset(&item->tmr);
+     BIT_DISABLE(*item->error_code, PROG_ERROR_NO_SIGNAL_FROM_CLIENT);
 }
 
